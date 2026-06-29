@@ -50,6 +50,7 @@ from sglang.srt.model_executor.forward_batch_deepseek_mha_mixin import (
     ForwardBatchDeepSeekMHAMixin,
 )
 from sglang.srt.model_executor.triton_ops.position import compute_position_triton
+from sglang.srt.layers.moe.reallb import build_vision_token_mask
 from sglang.srt.runtime_context import get_parallel
 from sglang.srt.server_args import get_global_server_args
 from sglang.srt.utils import (
@@ -478,6 +479,7 @@ class ForwardBatch(ForwardBatchDeepSeekMHAMixin):
 
     # For multimodal
     mm_input_embeds: Optional[torch.Tensor] = None
+    reallb_vision_token_mask: Optional[torch.Tensor] = None
 
     # Encoder-decoder cross-attention mask
     cross_attention_custom_mask: Optional[torch.Tensor] = None
@@ -854,6 +856,11 @@ class ForwardBatch(ForwardBatchDeepSeekMHAMixin):
                 )
             else:
                 ret._compute_mrope_positions(model_runner, batch)
+
+        if model_runner.server_args.enable_reallb:
+            ret.reallb_vision_token_mask = build_vision_token_mask(
+                batch, device=device
+            )
 
         # Init lora information
         if model_runner.server_args.enable_lora:

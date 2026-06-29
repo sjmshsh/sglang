@@ -1737,6 +1737,20 @@ class ServerArgs:
         bool,
         "Enable logging metrics for expert balancedness",
     ] = False
+    enable_reallb: A[bool, "Enable ReaLB real-time multimodal MoE scheduler."] = False
+    reallb_capacity_factor: A[
+        float,
+        "ReaLB hot-rank threshold C. A rank is hot when load / average_load > C.",
+    ] = 1.0
+    reallb_modality_threshold: A[
+        float,
+        "ReaLB vision-heavy threshold M_d. "
+        "A hot rank is compressible when vision_load / total_load > M_d.",
+    ] = 0.7
+    reallb_global_batch_threshold: A[
+        int,
+        "Enable ReaLB only when the global MoE token count reaches this threshold.",
+    ] = 2048
     deepep_config: A[
         Optional[str],
         "Tuned DeepEP config suitable for your own cluster. It can be either a string with JSON content or a file path.",
@@ -5573,6 +5587,17 @@ class ServerArgs:
 
         if self.enable_eplb:
             assert self.ep_size > 1
+
+        if self.enable_reallb:
+            assert (
+                self.reallb_capacity_factor >= 0
+            ), "reallb_capacity_factor must be non-negative"
+            assert (
+                0.0 <= self.reallb_modality_threshold <= 1.0
+            ), "reallb_modality_threshold must be in [0, 1]"
+            assert (
+                self.reallb_global_batch_threshold >= 0
+            ), "reallb_global_batch_threshold must be non-negative"
 
     def _handle_elastic_ep(self):
         if self.elastic_ep_backend is not None:

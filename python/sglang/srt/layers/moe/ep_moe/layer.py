@@ -178,6 +178,8 @@ class DeepEPMoE(FusedMoE):
                 topk_output,
             )
 
+        self._maybe_prepare_reallb_plan(hidden_states, topk_output)
+
         dispatch_output = self.dispatcher.dispatch(
             hidden_states=hidden_states, topk_output=topk_output
         )

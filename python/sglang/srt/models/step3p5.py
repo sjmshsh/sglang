@@ -291,9 +291,12 @@ class Step3p5MoEMLP(nn.Module):
 
     def op_dispatch_a(self, state):
         if self.ep_size > 1:
+            hidden_states = state.pop("hidden_states_mlp_input")
+            topk_output = state.pop("topk_output")
+            self.experts._maybe_prepare_reallb_plan(hidden_states, topk_output)
             self.experts.dispatcher.dispatch_a(
-                hidden_states=state.pop("hidden_states_mlp_input"),
-                topk_output=state.pop("topk_output"),
+                hidden_states=hidden_states,
+                topk_output=topk_output,
                 tbo_subbatch_index=state.get("tbo_subbatch_index"),
             )
 

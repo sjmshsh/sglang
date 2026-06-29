@@ -61,6 +61,10 @@ from sglang.srt.model_executor.runner_backend_utils.tc_piecewise_cuda_graph impo
     is_in_tc_piecewise_cuda_graph,
 )
 from sglang.srt.model_loader.weight_utils import narrow_padded_param_and_loaded_weight
+from sglang.srt.layers.moe.reallb import (
+    get_current_reallb_forward_batch,
+    maybe_build_reallb_plan,
+)
 from sglang.srt.runtime_context import get_parallel
 from sglang.srt.server_args import get_global_server_args
 from sglang.srt.utils import (
@@ -237,6 +241,11 @@ class FusedMoE(torch.nn.Module):
             )
 
         self.quant_config = quant_config
+        prefix_lower = prefix.lower()
+        self._reallb_force_all_tokens_vision = (
+            "vision_experts" in prefix_lower or "visual_experts" in prefix_lower
+        )
+        self.reallb_last_plan = None
         self.use_flashinfer_mxfp4_moe = get_moe_runner_backend().is_flashinfer_mxfp4()
         # TODO maybe we should remove this `if`, since `Mxfp4MoEMethod` does another round-up logic
         if (
@@ -1114,6 +1123,7 @@ class FusedMoE(torch.nn.Module):
     def forward_impl(self, hidden_states: torch.Tensor, topk_output: TopKOutput):
         origin_hidden_states_dim = hidden_states.shape[-1]
         assert self.quant_method is not None
+        self._maybe_prepare_reallb_plan(hidden_states, topk_output)
 
         dispatch_output = self.dispatcher.dispatch(
             hidden_states=hidden_states, topk_output=topk_output
@@ -1160,6 +1170,24 @@ class FusedMoE(torch.nn.Module):
         return self.quant_method.apply(
             layer=self,
             dispatch_output=dispatch_output,
+        )
+
+    def _maybe_prepare_reallb_plan(
+        self, hidden_states: torch.Tensor, topk_output: TopKOutput
+    ) -> None:
+        forward_batch = get_current_reallb_forward_batch()
+        vision_token_mask = (
+            getattr(forward_batch, "reallb_vision_token_mask", None)
+            if forward_batch is not None
+            else None
+        )
+        self.reallb_last_plan = maybe_build_reallb_plan(
+            layer_id=self.layer_id,
+            topk_ids=getattr(topk_output, "topk_ids", None),
+            num_physical_routed_experts=self._num_global_routed,
+            hidden_states_num_tokens=hidden_states.shape[0],
+            vision_token_mask=vision_token_mask,
+            force_all_tokens_vision=self._reallb_force_all_tokens_vision,
         )
 
     @classmethod
